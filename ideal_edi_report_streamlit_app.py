@@ -37,7 +37,7 @@ def login():
         if username == "oepnz" and password == "oepnz":
             st.session_state["logged_in"] = True
             st.success("Login successful! Redirecting to report...")
-            st.experimental_rerun()  # Automatically rerun the app after login.
+            st.rerun()  # Automatically rerun the app after login.
         else:
             st.error("Invalid username or password.")
 
