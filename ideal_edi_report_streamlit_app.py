@@ -23,7 +23,30 @@ import datetime
 from streamlit_gsheets import GSheetsConnection
 
 # -------------------------------
-# APP TITLE & GOOGLE SHEETS CONNECTION
+# LOGIN SECTION
+# -------------------------------
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+def login():
+    st.title("Login to EDI Report Portal")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    
+    if st.button("Login"):
+        if username == "oepnz" and password == "oepnz":
+            st.session_state["logged_in"] = True
+            st.success("Login successful! Redirecting to report...")
+            st.rerun()  # Automatically rerun the app to load the report.
+        else:
+            st.error("Invalid username or password.")
+
+if not st.session_state["logged_in"]:
+    login()
+    st.stop()
+
+# -------------------------------
+# MAIN REPORT PORTAL (Accessible After Login)
 # -------------------------------
 st.title("EDI Report Portal")
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -34,25 +57,21 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 df = conn.read(workshee='Sheet1', usecols=list(range(8)), ttl=5)
 df = df.dropna(how="all")
 
-# -------------------------------
-# SET EXPECTED COLUMNS AND VERIFY
-# -------------------------------
+# Define expected columns
 expected_columns = [
     "PO number", "DateOrdered", "Net Total of order", "Branch name",
     "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected"
 ]
-
-# Assign the expected columns as the DataFrame headers.
 df.columns = expected_columns
 
-# Check that all expected columns exist.
+# Verify that all expected columns exist
 for col in expected_columns:
     if col not in df.columns:
         st.error(f"Missing expected column in Google Sheet: {col}")
         st.stop()
 
 # -------------------------------
-# CONVERT "DATEORDERED" TO DATETIME FOR FILTERING & SORTING
+# CONVERT DATEORDERED TO DATETIME FOR FILTERING & SORTING
 # -------------------------------
 df["DateOrdered_dt"] = pd.to_datetime(df["DateOrdered"], format="%Y-%m-%d", errors="coerce")
 
@@ -75,9 +94,7 @@ else:
 # -------------------------------
 # GROUPING AND SORTING THE ORDERS
 # -------------------------------
-# Sort filtered records by DateOrdered (newest first)
 filtered_df = filtered_df.sort_values(by="DateOrdered_dt", ascending=False)
-# Get unique PO numbers in the sorted order
 unique_po = filtered_df["PO number"].drop_duplicates().tolist()
 
 # -------------------------------
@@ -87,7 +104,6 @@ st.markdown("### Orders (Grouped by PO number)")
 if unique_po:
     for po in unique_po:
         group_df = filtered_df[filtered_df["PO number"] == po]
-        # Use the first row to extract order-level details for the header.
         order_level = group_df.iloc[0]
         order_date = order_level["DateOrdered_dt"].date() if pd.notnull(order_level["DateOrdered_dt"]) else order_level["DateOrdered"]
         net_total = order_level["Net Total of order"]
@@ -96,7 +112,7 @@ if unique_po:
         expander_label = f"PO: {po} | DateOrdered: {order_date} | Branch: {branch} | Net Total: {net_total}"
         with st.expander(expander_label, expanded=False):
             st.markdown("**Order Lines:**")
-            # Modify the displayed table to also include PO number, DateOrdered, and Branch name.
+            # Now include additional columns in the order lines: PO number, DateOrdered, and Branch name
             columns_to_show = [
                 "PO number", "DateOrdered", "Branch name",
                 "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected"
@@ -120,7 +136,6 @@ with st.expander("About this report"):
              - DateOrdered 
              - Branch name 
              - Net Total of order
-
          • Expanding the order reveals its associated order lines:
              - PO number
              - DateOrdered 
@@ -134,8 +149,6 @@ with st.expander("About this report"):
         The default selection is from one month ago to today.
         Click on the table headers within an order for additional sorting options.
 
-
         This app was built by Amrit Ramadugu. If you have any questions, comments or suggestions please get in touch with me.
-
         """
     )
