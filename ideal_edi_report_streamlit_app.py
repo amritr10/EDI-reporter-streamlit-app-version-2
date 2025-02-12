@@ -63,7 +63,8 @@ df["DateOrdered_dt"] = pd.to_datetime(df["DateOrdered"], format="%Y-%m-%d", erro
 # -------------------------------
 today = datetime.date.today()
 one_month_ago = today - datetime.timedelta(days=30)
-selected_dates = st.sidebar.date_input("Select Order Date Range (filters by DateOrdered)", value=(one_month_ago, today))
+selected_dates = st.sidebar.date_input("Select Order Date Range (filters by DateOrdered)", 
+                                         value=(one_month_ago, today))
 
 if isinstance(selected_dates, (list, tuple)) and len(selected_dates) == 2:
     start_date, end_date = selected_dates
@@ -75,7 +76,21 @@ else:
     filtered_df = df.loc[mask].copy()
 
 # -------------------------------
-# ABOUT THIS REPORT (Placed Under the Date Range Picker in the Sidebar)
+# BRANCH NAME FILTER (Placed Below the Date Range Filter in the Sidebar)
+# -------------------------------
+# Build a sorted list of branch names found in the whole dataset.
+unique_branches = sorted(df["Branch name"].dropna().unique().tolist())
+# Add an "All" option to include all branches.
+branch_options = ["All"] + unique_branches
+
+branch_selection = st.sidebar.selectbox("Filter by Branch Name (searchable dropdown):", options=branch_options)
+
+# Apply branch filter if a specific branch is selected.
+if branch_selection != "All":
+    filtered_df = filtered_df[filtered_df["Branch name"] == branch_selection]
+
+# -------------------------------
+# ABOUT THIS REPORT (Placed Under the Filters in the Sidebar)
 # -------------------------------
 with st.sidebar.expander("About this report"):
     st.markdown(
@@ -83,14 +98,14 @@ with st.sidebar.expander("About this report"):
         EDI Report Portal – End-User Guide
 
         Overview:
-        The EDI Report Portal is a secure, web-based application designed to help you view and analyze purchase orders from Ideal EDI ordering from a centralized location. The app groups order details by PO number, making it easy to explore individual orders and their associated line items. Additionally, you can filter orders by date using a built-in date range picker.
+        The EDI Report Portal is a secure, web-based application designed to help you view and analyze purchase orders from Ideal EDI ordering from a centralized location. The app groups order details by PO number, making it easy to explore individual orders and their associated line items. Additionally, you can filter orders by date and branch using built-in filters.
 
         How to Access the Report:
         1. Launch the application in your web browser.
         2. You will first encounter a login screen. Enter the following credentials:
            • Username: oepnz
            • Password: oepnz
-        3. Click the "Login" button. If the credentials are correct, the app will automatically refresh, and you will be granted access to the report.
+        3. Click the "Login" button. If the credentials are correct, the app will automatically reload, and you will be granted access to the report.
 
         Features and How to Use Them:
 
@@ -98,12 +113,11 @@ with st.sidebar.expander("About this report"):
            • Secure Entry: The app starts with a simple login form. Only users with the correct username and password can access the data.
            • Automatic Redirection: Once you log in successfully, the app automatically reloads to display the report.
 
-        2. Date Range Filter:
-           • At the top of the report, you will find a date range picker.
-           • The filter is pre-set with a default range from one month ago until today.
-           • Use the calendar controls to select a new start and end date if you wish to view orders for a different time period.
-           • The displayed orders are automatically filtered to include only those with an order date (DateOrdered) within the selected range.
-
+        2. Date Range and Branch Name Filters:
+           • The Date Range filter is pre-set with a default range from one month ago until today.
+           • The Branch Name filter is provided as a searchable dropdown. Select "All" to view orders for all branches or choose a specific branch.
+           • Both filters work in tandem (AND operation) to display only those orders that match the selected date range and branch.
+           
         3. Order Grouping and Sorting:
            • Orders are grouped by their “PO number.”
            • The report sorts orders from the latest to the oldest based on the DateOrdered field, so the most recent purchase orders appear at the top.
@@ -122,8 +136,8 @@ with st.sidebar.expander("About this report"):
                 - DateExpected
 
         Tips for Best Experience:
-           • Always ensure the selected date range covers the period you’re interested in.
-           • If you need to review details of a specific order, simply click on its expander header to reveal the order lines.
+           • Always ensure the selected date range and branch are appropriate for your needs.
+           • To review details of a specific order, simply click on its expander header to reveal the order lines.
            • Use the table’s built-in sorting functionality (by clicking the column headers) to further organize the data if needed.
 
         This app was built by Amrit Ramadugu. If you have any questions, comments or suggestions please get in touch with me.
@@ -168,4 +182,4 @@ if unique_po:
             order_lines["PO number"] = order_lines["PO number"].apply(lambda x: str(int(x)) if pd.notnull(x) and isinstance(x, (float, int)) else x)
             st.dataframe(order_lines, use_container_width=True)
 else:
-    st.info("No orders found for the selected date range.")
+    st.info("No orders found for the selected date range and branch filter.")
