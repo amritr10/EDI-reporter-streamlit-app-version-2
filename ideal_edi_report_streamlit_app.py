@@ -36,14 +36,15 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # -------------------------------
 # READ DATA FROM GOOGLE SHEET
 # -------------------------------
-# Update usecols to include 9 columns now that the "Description" column exists.
-df = conn.read(workshee='Sheet1', usecols=list(range(9)), ttl=5)
+# With the new "Order Status" column, we now read 10 columns.
+df = conn.read(workshee='Sheet1', usecols=list(range(10)), ttl=5)
 df = df.dropna(how="all")
 
-# Define expected columns (added "Description") and assign them to the DataFrame.
+# Define expected columns including the new "Order Status"
 expected_columns = [
     "PO number", "DateOrdered", "Net Total of order", "Branch name",
-    "SupplierItemCode", "Description", "Unit price", "QtyOrdered", "DateExpected"
+    "SupplierItemCode", "Description", "Unit price", "QtyOrdered", "DateExpected",
+    "Order Status"
 ]
 df.columns = expected_columns
 
@@ -63,8 +64,10 @@ df["DateOrdered_dt"] = pd.to_datetime(df["DateOrdered"], format="%Y-%m-%d", erro
 # -------------------------------
 today = datetime.date.today()
 one_month_ago = today - datetime.timedelta(days=30)
-selected_dates = st.sidebar.date_input("Select Order Date Range (filters by DateOrdered)", 
-                                         value=(one_month_ago, today))
+selected_dates = st.sidebar.date_input(
+    "Select Order Date Range (filters by DateOrdered)", 
+    value=(one_month_ago, today)
+)
 
 if isinstance(selected_dates, (list, tuple)) and len(selected_dates) == 2:
     start_date, end_date = selected_dates
@@ -78,16 +81,18 @@ else:
 # -------------------------------
 # BRANCH NAME FILTER (Placed Below the Date Range Filter in the Sidebar)
 # -------------------------------
-# Build a sorted list of branch names found in the whole dataset.
 unique_branches = sorted(df["Branch name"].dropna().unique().tolist())
-# Add an "All" option to include all branches.
 branch_options = ["All"] + unique_branches
-
 branch_selection = st.sidebar.selectbox("Filter by Branch Name (searchable dropdown):", options=branch_options)
 
-# Apply branch filter if a specific branch is selected.
 if branch_selection != "All":
     filtered_df = filtered_df[filtered_df["Branch name"] == branch_selection]
+
+# -------------------------------
+# ORDER STATUS FILTER (New Filter in the Sidebar)
+# -------------------------------
+order_status_options = ["All", "PASS", "FAIL"]
+order_status_selection = st.sidebar.selectbox("Filter by Order Status (PASS/FAIL):", options=order_status_options)
 
 # -------------------------------
 # ABOUT THIS REPORT (Placed Under the Filters in the Sidebar)
@@ -98,7 +103,9 @@ with st.sidebar.expander("About this report"):
         EDI Report Portal – End-User Guide
 
         Overview:
-        The EDI Report Portal is a secure, web-based application designed to help you view and analyze purchase orders from Ideal EDI ordering from a centralized location. The app groups order details by PO number, making it easy to explore individual orders and their associated line items. Additionally, you can filter orders by date and branch using built-in filters.
+        The EDI Report Portal is a secure, web-based application designed to help you view and analyze purchase orders from Ideal EDI ordering from a centralized location. 
+        The app groups order details by PO number, making it easy to explore individual orders and their associated line items. 
+        Additionally, you can filter orders by date, branch, and order status using built-in filters.
 
         How to Access the Report:
         1. Launch the application in your web browser.
@@ -113,14 +120,17 @@ with st.sidebar.expander("About this report"):
            • Secure Entry: The app starts with a simple login form. Only users with the correct username and password can access the data.
            • Automatic Redirection: Once you log in successfully, the app automatically reloads to display the report.
 
-        2. Date Range and Branch Name Filters:
+        2. Date Range, Branch Name, and Order Status Filters:
            • The Date Range filter is pre-set with a default range from one month ago until today.
-           • The Branch Name filter is provided as a searchable dropdown. Select "All" to view orders for all branches or choose a specific branch.
-           • Both filters work in tandem (AND operation) to display only those orders that match the selected date range and branch.
+           • The Branch Name filter is provided as a searchable dropdown.
+           • The Order Status filter enables you to display orders that are overall PASS or FAIL.
+             (Note: If any line item in the order has a status of FAIL, the overall order is marked as FAIL.)
+           • All filters work in conjunction (AND operation) to display only those orders that match the selected criteria.
            
         3. Order Grouping and Sorting:
            • Orders are grouped by their “PO number.”
            • The report sorts orders from the latest to the oldest based on the DateOrdered field, so the most recent purchase orders appear at the top.
+           • If any line item within an order fails, the order banner shows a red indicator (EDI process: FAIL).
 
         4. Viewing Order Details:
            • Each order appears as an expandable section (an expander). The header shows key order-level details such as:
@@ -128,19 +138,22 @@ with st.sidebar.expander("About this report"):
                 - DateOrdered
                 - Branch name
                 - Net Total of order
+                - Overall EDI process status (PASS or FAIL)
            • Click on an order header to expand it. Inside, you’ll see a table containing detailed order lines.
-           • Each order line now also includes the "Description" field along with:
+           • Each order line now also includes:
                 - SupplierItemCode
+                - Description
                 - Unit price
                 - QtyOrdered
                 - DateExpected
+                - Order Status
 
         Tips for Best Experience:
-           • Always ensure the selected date range and branch are appropriate for your needs.
+           • Always ensure the selected date range, branch, and order status are appropriate for your needs.
            • To review details of a specific order, simply click on its expander header to reveal the order lines.
            • Use the table’s built-in sorting functionality (by clicking the column headers) to further organize the data if needed.
 
-        This app was built by Amrit Ramadugu. If you have any questions, comments or suggestions please get in touch with me.
+        This app was built by Amrit Ramadugu. If you have any questions, comments or suggestions, please get in touch.
         """
     )
 
@@ -163,23 +176,37 @@ if unique_po:
             po_display = str(po)
 
         group_df = filtered_df[filtered_df["PO number"] == po]
+        
+        # Determine the aggregated order status.
+        # If any line item in the order fails, we tag the entire order as FAIL.
+        if group_df["Order Status"].str.upper().eq("FAIL").any():
+            aggregated_status = "FAIL"
+            status_tag = " | EDI process: 🔴 FAIL"
+        else:
+            aggregated_status = "PASS"
+            status_tag = " | EDI process: ✅ PASS"
+        
+        # Apply the order status filter (if not "All", only display orders matching the selected status)
+        if order_status_selection != "All" and aggregated_status != order_status_selection:
+            continue
+        
         order_level = group_df.iloc[0]
         order_date = order_level["DateOrdered_dt"].date() if pd.notnull(order_level["DateOrdered_dt"]) else order_level["DateOrdered"]
         net_total = order_level["Net Total of order"]
         branch = order_level["Branch name"]
 
-        # Construct the expander label using order-level details.
-        expander_label = f"PO: {po_display} | DateOrdered: {order_date} | Branch: {branch} | Net Total: {net_total}"
+        expander_label = f"PO: {po_display} | DateOrdered: {order_date} | Branch: {branch} | Net Total: {net_total}{status_tag}"
         with st.expander(expander_label, expanded=False):
             st.markdown("**Order Lines:**")
-            # Update columns_to_show to include the "Description" field.
+            # Update the columns to show the new "Order Status" field.
             columns_to_show = [
                 "PO number", "DateOrdered", "Branch name",
-                "SupplierItemCode", "Description", "Unit price", "QtyOrdered", "DateExpected"
+                "SupplierItemCode", "Description", "Unit price", "QtyOrdered", "DateExpected", "Order Status"
             ]
             order_lines = group_df[columns_to_show].copy()
-            # Re-format the "PO number" column so that no commas or decimals are shown.
-            order_lines["PO number"] = order_lines["PO number"].apply(lambda x: str(int(x)) if pd.notnull(x) and isinstance(x, (float, int)) else x)
+            order_lines["PO number"] = order_lines["PO number"].apply(
+                lambda x: str(int(x)) if pd.notnull(x) and isinstance(x, (float, int)) else x
+            )
             st.dataframe(order_lines, use_container_width=True)
 else:
-    st.info("No orders found for the selected date range and branch filter.")
+    st.info("No orders found for the selected date range, branch, and order status filter.")
