@@ -63,7 +63,7 @@ df["DateOrdered_dt"] = pd.to_datetime(df["DateOrdered"], format="%Y-%m-%d", erro
 # -------------------------------
 # DATE RANGE FILTER (Placed in the Sidebar)
 # -------------------------------
-today = datetime.date.today()
+today = datetime.date.today() + datetime.timedelta(days=1)
 one_month_ago = today - datetime.timedelta(days=30)
 selected_dates = st.sidebar.date_input(
     "Select Order Date Range (filters by DateOrdered)", 
