@@ -137,7 +137,7 @@ with st.sidebar.expander("About this report"):
            • Orders are grouped by their “PO number.”
            • The report sorts orders from the latest to the oldest based on the DateOrdered field, so the most recent purchase orders appear at the top.
            • If any line item within an order fails, the order banner shows a red indicator (EDI process: FAIL). Similarly, if at least one item is pending (but no failures) then the status indicator shows pending.
-        
+
         4. Viewing Order Details:
            • Each order appears as an expandable section (an expander). The header shows key order-level details such as:
                 - PO number
@@ -154,12 +154,20 @@ with st.sidebar.expander("About this report"):
                 - DateExpected
                 - Order Status
 
+        5. Automatic Store Check:
+           • There is a function that checks the store every 5 minutes to see if the EDI orders processed successfully or failed.
+           • "PENDING": An order was read from the customer database. The report tool will check the store in 5 minutes to see if the order was processed into the EDI system.
+           • After 5 minutes passes:
+             - "PASS" means the order is picked up by EDI with no errors.
+             - "FAIL" means the order is present in the customer order database, but there has been some error in the EDI process. Check your email for detailed errors. If one line fails, the entire order fails and needs to be processed manually.
+           • Note that automatic data refresh isn't supported by the reporting tool; you can refresh by pressing the refresh button at the top or by pressing the "r" key on your keyboard.
+
         Tips for Best Experience:
            • Always ensure the selected date range, branch, and order status are appropriate for your needs.
            • To review details of a specific order, simply click on its expander header to reveal the order lines.
            • Use the table’s built-in sorting functionality (by clicking the column headers) to further organize the data if needed.
 
-        This app was built by Amrit Ramadugu. If you have any questions, comments or suggestions, please get in touch.
+        This app was built by Amrit Ramadugu. If you have any questions, comments, or suggestions, please get in touch.
         """
     )
 
