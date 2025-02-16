@@ -36,11 +36,12 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # -------------------------------
 # READ DATA FROM GOOGLE SHEET
 # -------------------------------
-# With the new "Order Status" column, we now read 10 columns.
+# With the new "Order Status" column now supporting PENDING,
+# we now read 10 columns.
 df = conn.read(workshee='Sheet1', usecols=list(range(10)), ttl=5)
 df = df.dropna(how="all")
 
-# Define expected columns including the new "Order Status"
+# Define the expected columns including the new "Order Status"
 expected_columns = [
     "PO number", "DateOrdered", "Net Total of order", "Branch name",
     "SupplierItemCode", "Description", "Unit price", "QtyOrdered", "DateExpected",
@@ -91,8 +92,8 @@ if branch_selection != "All":
 # -------------------------------
 # ORDER STATUS FILTER (New Filter in the Sidebar)
 # -------------------------------
-order_status_options = ["All", "PASS", "FAIL"]
-order_status_selection = st.sidebar.selectbox("Filter by Order Status (PASS/FAIL):", options=order_status_options)
+order_status_options = ["All", "PASS", "FAIL", "PENDING"]
+order_status_selection = st.sidebar.selectbox("Filter by Order Status (PASS/FAIL/PENDING):", options=order_status_options)
 
 # -------------------------------
 # ABOUT THIS REPORT (Placed Under the Filters in the Sidebar)
@@ -123,22 +124,22 @@ with st.sidebar.expander("About this report"):
         2. Date Range, Branch Name, and Order Status Filters:
            • The Date Range filter is pre-set with a default range from one month ago until today.
            • The Branch Name filter is provided as a searchable dropdown.
-           • The Order Status filter enables you to display orders that are overall PASS or FAIL.
-             (Note: If any line item in the order has a status of FAIL, the overall order is marked as FAIL.)
+           • The Order Status filter enables you to display orders that are overall PASS, FAIL, or PENDING.
+             (Note: If any line item in the order has a status of FAIL, the overall order is marked as FAIL. If no line item fails but at least one is PENDING, the order is flagged as PENDING. Otherwise, the order is marked as PASS.)
            • All filters work in conjunction (AND operation) to display only those orders that match the selected criteria.
            
         3. Order Grouping and Sorting:
            • Orders are grouped by their “PO number.”
            • The report sorts orders from the latest to the oldest based on the DateOrdered field, so the most recent purchase orders appear at the top.
-           • If any line item within an order fails, the order banner shows a red indicator (EDI process: FAIL).
-
+           • If any line item within an order fails, the order banner shows a red indicator (EDI process: FAIL). Similarly, if at least one item is pending (but no failures) then the status indicator shows pending.
+        
         4. Viewing Order Details:
            • Each order appears as an expandable section (an expander). The header shows key order-level details such as:
                 - PO number
                 - DateOrdered
                 - Branch name
                 - Net Total of order
-                - Overall EDI process status (PASS or FAIL)
+                - Overall EDI process status (PASS, FAIL, or PENDING)
            • Click on an order header to expand it. Inside, you’ll see a table containing detailed order lines.
            • Each order line now also includes:
                 - SupplierItemCode
@@ -177,13 +178,23 @@ if unique_po:
 
         group_df = filtered_df[filtered_df["PO number"] == po]
         
-        # Determine the aggregated order status.
-        # If any line item in the order fails, we tag the entire order as FAIL.
+        # Determine the aggregated order status:
+        # If any line item fails, the order is marked as FAIL.
+        # If no failures but any line is pending, the order is marked as PENDING.
+        # Otherwise, it is marked as PASS.
         if group_df["Order Status"].str.upper().eq("FAIL").any():
             aggregated_status = "FAIL"
-            status_tag = " | EDI process: 🔴 FAIL"
+        elif group_df["Order Status"].str.upper().eq("PENDING").any():
+            aggregated_status = "PENDING"
         else:
             aggregated_status = "PASS"
+        
+        # Set a status tag for the expander header.
+        if aggregated_status == "FAIL":
+            status_tag = " | EDI process: 🔴 FAIL"
+        elif aggregated_status == "PENDING":
+            status_tag = " | EDI process: ⏳ PENDING"
+        else:
             status_tag = " | EDI process: ✅ PASS"
         
         # Apply the order status filter (if not "All", only display orders matching the selected status)
@@ -198,10 +209,10 @@ if unique_po:
         expander_label = f"PO: {po_display} | DateOrdered: {order_date} | Branch: {branch} | Net Total: {net_total}{status_tag}"
         with st.expander(expander_label, expanded=False):
             st.markdown("**Order Lines:**")
-            # Update the columns to show the new "Order Status" field.
+            # Specify the columns including the new "Order Status" field.
             columns_to_show = [
                 "PO number", "DateOrdered", "Branch name",
-                "SupplierItemCode", "Description", "Unit price", "QtyOrdered", "DateExpected", "Order Status"
+                 "Description", "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected", "Order Status"
             ]
             order_lines = group_df[columns_to_show].copy()
             order_lines["PO number"] = order_lines["PO number"].apply(
