@@ -31,6 +31,11 @@ if not st.session_state["logged_in"]:
 # MAIN REPORT PORTAL (Accessible After Login)
 # -------------------------------
 st.title("EDI Report Portal")
+
+# Add a refresh button at the top of the report to reload the data.
+if st.button("Refresh Data"):
+    st.rerun()
+
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # -------------------------------
@@ -44,7 +49,7 @@ df = df.dropna(how="all")
 # Define the expected columns including the new "Order Status"
 expected_columns = [
     "PO number", "DateOrdered", "Net Total of order", "Branch name",
-     "Description", "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected",
+    "Description", "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected",
     "Order Status"
 ]
 df.columns = expected_columns
@@ -66,7 +71,7 @@ df["DateOrdered_dt"] = pd.to_datetime(df["DateOrdered"], format="%Y-%m-%d", erro
 today = datetime.date.today() + datetime.timedelta(days=1)
 one_month_ago = today - datetime.timedelta(days=30)
 selected_dates = st.sidebar.date_input(
-    "Select Order Date Range (filters by DateOrdered)", 
+    "Select Order Date Range (filters by DateOrdered)",
     value=(one_month_ago, today)
 )
 
@@ -212,7 +217,7 @@ if unique_po:
             # Specify the columns including the new "Order Status" field.
             columns_to_show = [
                 "PO number", "DateOrdered", "Branch name",
-                  "Description","SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected", "Order Status"
+                "Description", "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected", "Order Status"
             ]
             order_lines = group_df[columns_to_show].copy()
             order_lines["PO number"] = order_lines["PO number"].apply(
