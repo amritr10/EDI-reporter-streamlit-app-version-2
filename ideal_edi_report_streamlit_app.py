@@ -44,7 +44,7 @@ df = df.dropna(how="all")
 # Define the expected columns including the new "Order Status"
 expected_columns = [
     "PO number", "DateOrdered", "Net Total of order", "Branch name",
-    "SupplierItemCode", "Description", "Unit price", "QtyOrdered", "DateExpected",
+     "Description", "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected",
     "Order Status"
 ]
 df.columns = expected_columns
@@ -212,7 +212,7 @@ if unique_po:
             # Specify the columns including the new "Order Status" field.
             columns_to_show = [
                 "PO number", "DateOrdered", "Branch name",
-                 "Description", "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected", "Order Status"
+                  "Description","SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected", "Order Status"
             ]
             order_lines = group_df[columns_to_show].copy()
             order_lines["PO number"] = order_lines["PO number"].apply(
