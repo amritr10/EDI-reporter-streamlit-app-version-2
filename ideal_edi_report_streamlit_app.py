@@ -19,7 +19,7 @@ def login():
         if username == "oepnz" and password == "oepnz":
             st.session_state["logged_in"] = True
             st.success("Login successful! Redirecting to report...")
-            st.rerun()  # Automatically rerun the app after login.
+            st.rerun()  # Rerun the app after login.
         else:
             st.error("Invalid username or password.")
 
@@ -28,45 +28,43 @@ if not st.session_state["logged_in"]:
     st.stop()
 
 # -------------------------------
-# MAIN REPORT PORTAL (Accessible After Login)
+# MAIN REPORT PORTAL
 # -------------------------------
 st.title("EDI Report Portal")
 
-# Add a refresh button at the top of the report to reload the data.
+# Add a refresh button at the top.
 if st.button("Refresh Data"):
     st.rerun()
 
+# -------------------------------
+# ESTABLISH GOOGLE SHEET CONNECTION
+# -------------------------------
+# Using st.connection with the GSheetsConnection type.
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # -------------------------------
 # READ DATA FROM GOOGLE SHEET
 # -------------------------------
-# With the new "Order Status" column now supporting PENDING,
-# we now read 10 columns.
-df = conn.read(workshee='Sheet1', usecols=list(range(10)), ttl=5)
+# We read 12 columns (including our two new manual fix columns).
+df = conn.read(worksheet="Sheet1", usecols=list(range(12)), ttl=5)
 df = df.dropna(how="all")
 
-# Define the expected columns including the new "Order Status"
+# Define the expected columns (make sure the sheet header includes these names).
 expected_columns = [
     "PO number", "DateOrdered", "Net Total of order", "Branch name",
     "Description", "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected",
-    "Order Status"
+    "Order Status", "Manual Fix By", "Manual Fix Comment"
 ]
+if len(df.columns) < len(expected_columns):
+    st.error("The Google Sheet does not have enough columns. Please update the sheet to include the required columns.")
+    st.stop()
 df.columns = expected_columns
 
-# Verify that all expected columns exist.
-for col in expected_columns:
-    if col not in df.columns:
-        st.error(f"Missing expected column in Google Sheet: {col}")
-        st.stop()
-
-# -------------------------------
-# CONVERT DATEORDERED TO DATETIME FOR FILTERING & SORTING
-# -------------------------------
+# Convert DateOrdered column for filtering & sorting.
 df["DateOrdered_dt"] = pd.to_datetime(df["DateOrdered"], format="%Y-%m-%d", errors="coerce")
 
 # -------------------------------
-# DATE RANGE FILTER (Placed in the Sidebar)
+# SIDEBAR FILTERS: DATE RANGE, BRANCH, ORDER STATUS
 # -------------------------------
 today = datetime.date.today() + datetime.timedelta(days=1)
 one_month_ago = today - datetime.timedelta(days=30)
@@ -84,24 +82,18 @@ else:
     mask = df["DateOrdered_dt"].dt.date == selected_date
     filtered_df = df.loc[mask].copy()
 
-# -------------------------------
-# BRANCH NAME FILTER (Placed Below the Date Range Filter in the Sidebar)
-# -------------------------------
 unique_branches = sorted(df["Branch name"].dropna().unique().tolist())
 branch_options = ["All"] + unique_branches
 branch_selection = st.sidebar.selectbox("Filter by Branch Name (searchable dropdown):", options=branch_options)
-
 if branch_selection != "All":
     filtered_df = filtered_df[filtered_df["Branch name"] == branch_selection]
 
-# -------------------------------
-# ORDER STATUS FILTER (New Filter in the Sidebar)
-# -------------------------------
-order_status_options = ["All", "PASS", "FAIL", "PENDING"]
-order_status_selection = st.sidebar.selectbox("Filter by Order Status (PASS/FAIL/PENDING):", options=order_status_options)
+# Include "MANUAL FIX" as an option.
+order_status_options = ["All", "PASS", "FAIL", "PENDING", "MANUAL FIX"]
+order_status_selection = st.sidebar.selectbox("Filter by Order Status:", options=order_status_options)
 
 # -------------------------------
-# ABOUT THIS REPORT (Placed Under the Filters in the Sidebar)
+# ABOUT THIS REPORT (Sidebar)
 # -------------------------------
 with st.sidebar.expander("About this report"):
     st.markdown(
@@ -109,111 +101,87 @@ with st.sidebar.expander("About this report"):
         EDI Report Portal – End-User Guide
 
         Overview:
-        The EDI Report Portal is a secure, web-based application designed to help you view and analyze purchase orders from Ideal EDI ordering from a centralized location. 
-        The app groups order details by PO number, making it easy to explore individual orders and their associated line items. 
-        Additionally, you can filter orders by date, branch, and order status using built-in filters.
+        This portal displays purchase order details grouped by PO number. You may filter by order date, branch, and order status.
+        Additionally, when an order is flagged as FAIL, you can enter who manually fixed the order and add any comments regarding the fix.
+        Once marked, the order status will update to “MANUAL FIX” in both the Google Sheet and the report display.
 
-        How to Access the Report:
-        1. Launch the application in your web browser.
-        2. You will first encounter a login screen. Enter the following credentials:
-           • Username: oepnz
-           • Password: oepnz
-        3. Click the "Login" button. If the credentials are correct, the app will automatically reload, and you will be granted access to the report.
+        How to Use:
+         1. Login with your credentials (username: oepnz, password: oepnz).
+         2. Use the sidebar filters to view orders as needed.
+         3. For any order with status “FAIL,” expand the order and provide “Fixed By” and “Fix Comments.”
+         4. Click “Mark as Manually Fixed” to update the sheet.
+         5. Refresh the report to see the updated status.
 
-        Features and How to Use Them:
-
-        1. Login Screen:
-           • Secure Entry: The app starts with a simple login form. Only users with the correct username and password can access the data.
-           • Automatic Redirection: Once you log in successfully, the app automatically reloads to display the report.
-
-        2. Date Range, Branch Name, and Order Status Filters:
-           • The Date Range filter is pre-set with a default range from one month ago until today.
-           • The Branch Name filter is provided as a searchable dropdown.
-           • The Order Status filter enables you to display orders that are overall PASS, FAIL, or PENDING.
-             (Note: If any line item in the order has a status of FAIL, the overall order is marked as FAIL. If no line item fails but at least one is PENDING, the order is flagged as PENDING. Otherwise, the order is marked as PASS.)
-           • All filters work in conjunction (AND operation) to display only those orders that match the selected criteria.
-           
-        3. Order Grouping and Sorting:
-           • Orders are grouped by their “PO number.”
-           • The report sorts orders from the latest to the oldest based on the DateOrdered field, so the most recent purchase orders appear at the top.
-           • If any line item within an order fails, the order banner shows a red indicator (EDI process: FAIL). Similarly, if at least one item is pending (but no failures) then the status indicator shows pending.
-
-        4. Viewing Order Details:
-           • Each order appears as an expandable section (an expander). The header shows key order-level details such as:
-                - PO number
-                - DateOrdered
-                - Branch name
-                - Net Total of order
-                - Overall EDI process status (PASS, FAIL, or PENDING)
-           • Click on an order header to expand it. Inside, you’ll see a table containing detailed order lines.
-           • Each order line now also includes:
-                - SupplierItemCode
-                - Description
-                - Unit price
-                - QtyOrdered
-                - DateExpected
-                - Order Status
-
-        5. Automatic Store Check:
-           • There is a function that checks the store every 5 minutes to see if the EDI orders processed successfully or failed.
-           • "PENDING": An order was read from the customer database. The report tool will check the store in 5 minutes to see if the order was processed into the EDI system.
-           • After 5 minutes passes:
-             - "PASS" means the order is picked up by EDI with no errors.
-             - "FAIL" means the order is present in the customer order database, but there has been some error in the EDI process. Check your email for detailed errors. If one line fails, the entire order fails and needs to be processed manually.
-           • Note that automatic data refresh isn't supported by the reporting tool; you can refresh by pressing the refresh button at the top or by pressing the "r" key on your keyboard.
-
-        Tips for Best Experience:
-           • Always ensure the selected date range, branch, and order status are appropriate for your needs.
-           • To review details of a specific order, simply click on its expander header to reveal the order lines.
-           • Use the table’s built-in sorting functionality (by clicking the column headers) to further organize the data if needed.
-
-        This app was built by Amrit Ramadugu. If you have any questions, comments, or suggestions, please get in touch.
+        This app was built by Amrit Ramadugu.
         """
     )
 
 # -------------------------------
-# GROUPING AND SORTING THE ORDERS
+# FUNCTION TO UPDATE THE GOOGLE SHEET USING conn.update
+# -------------------------------
+def update_order_manual_fix(po_number, fixed_by, fix_comment):
+    """
+    Update all rows in the Google Sheet that have the given PO number:
+      - Set "Order Status" to "MANUAL FIX"
+      - Set "Manual Fix By" to the provided fixed_by value
+      - Set "Manual Fix Comment" to the provided fix_comment value
+    The update is done using the gsheetsconnection's conn.update method.
+    """
+    # Read the full sheet again as a dataframe.
+    df_update = conn.read(worksheet="Sheet1", usecols=list(range(12)))
+    df_update = df_update.dropna(how="all")
+    df_update.columns = expected_columns
+
+    # Locate rows matching the PO number (using string comparison).
+    mask = df_update["PO number"].astype(str).str.strip() == str(po_number).strip()
+    df_update.loc[mask, "Order Status"] = "MANUAL FIX"
+    df_update.loc[mask, "Manual Fix By"] = fixed_by
+    df_update.loc[mask, "Manual Fix Comment"] = fix_comment
+
+    # Write the updated dataframe back to the Google Sheet.
+    conn.update(worksheet="Sheet1", data=df_update)
+
+# -------------------------------
+# GROUPING, SORTING, & DISPLAY OF ORDERS
 # -------------------------------
 filtered_df = filtered_df.sort_values(by="DateOrdered_dt", ascending=False)
 unique_po = filtered_df["PO number"].drop_duplicates().tolist()
 
-# -------------------------------
-# DISPLAY THE GROUPED ORDERS WITH NESTED ORDER LINES
-# -------------------------------
 st.markdown("### Orders (Grouped by PO number)")
 if unique_po:
     for po in unique_po:
-        # Format PO number to avoid commas and decimals.
+        # Format the PO number for display.
         if isinstance(po, (float, int)):
             po_display = str(int(po))
         else:
             po_display = str(po)
 
         group_df = filtered_df[filtered_df["PO number"] == po]
-        
-        # Determine the aggregated order status:
-        # If any line item fails, the order is marked as FAIL.
-        # If no failures but any line is pending, the order is marked as PENDING.
-        # Otherwise, it is marked as PASS.
-        if group_df["Order Status"].str.upper().eq("FAIL").any():
+        # Determine aggregated order status using a hierarchy:
+        statuses = group_df["Order Status"].str.upper().unique().tolist()
+        if "FAIL" in statuses:
             aggregated_status = "FAIL"
-        elif group_df["Order Status"].str.upper().eq("PENDING").any():
+        elif "PENDING" in statuses:
             aggregated_status = "PENDING"
+        elif "MANUAL FIX" in statuses:
+            aggregated_status = "MANUAL FIX"
         else:
             aggregated_status = "PASS"
-        
-        # Set a status tag for the expander header.
+
+        # Prepare a tag for the order header.
         if aggregated_status == "FAIL":
             status_tag = " | EDI process: 🔴 FAIL"
         elif aggregated_status == "PENDING":
             status_tag = " | EDI process: ⏳ PENDING"
+        elif aggregated_status == "MANUAL FIX":
+            status_tag = " | EDI process: 🛠️ MANUAL FIX"
         else:
             status_tag = " | EDI process: ✅ PASS"
-        
-        # Apply the order status filter (if not "All", only display orders matching the selected status)
+
+        # Apply the order status filter if it is not "All".
         if order_status_selection != "All" and aggregated_status != order_status_selection:
             continue
-        
+
         order_level = group_df.iloc[0]
         order_date = order_level["DateOrdered_dt"].date() if pd.notnull(order_level["DateOrdered_dt"]) else order_level["DateOrdered"]
         net_total = order_level["Net Total of order"]
@@ -222,15 +190,33 @@ if unique_po:
         expander_label = f"PO: {po_display} | DateOrdered: {order_date} | Branch: {branch} | Net Total: {net_total}{status_tag}"
         with st.expander(expander_label, expanded=False):
             st.markdown("**Order Lines:**")
-            # Specify the columns including the new "Order Status" field.
             columns_to_show = [
                 "PO number", "DateOrdered", "Branch name",
-                "Description", "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected", "Order Status"
+                "Description", "SupplierItemCode", "Unit price", "QtyOrdered", "DateExpected",
+                "Order Status", "Manual Fix By", "Manual Fix Comment"
             ]
             order_lines = group_df[columns_to_show].copy()
             order_lines["PO number"] = order_lines["PO number"].apply(
                 lambda x: str(int(x)) if pd.notnull(x) and isinstance(x, (float, int)) else x
             )
             st.dataframe(order_lines, use_container_width=True)
+
+            # If the order is flagged as FAIL, allow user input to mark it as manually fixed.
+            if aggregated_status == "FAIL":
+                st.markdown("### Manual Order Fix")
+                fixed_by = st.text_input("Fixed By", key=f"fix_by_{po_display}")
+                fix_comment = st.text_area("Fix Comments", key=f"fix_comment_{po_display}")
+                if st.button("Mark as Manually Fixed", key=f"manual_fix_button_{po_display}"):
+                    if not fixed_by:
+                        st.error("Please enter the name of the user who fixed the order.")
+                    else:
+                        update_order_manual_fix(po, fixed_by, fix_comment)
+                        st.success("Order updated as MANUAL FIX. Refreshing...")
+                        st.rerun()
+            elif aggregated_status == "MANUAL FIX":
+                # Optionally display the fix details
+                fix_by_info = order_level.get("Manual Fix By", "")
+                fix_comment_info = order_level.get("Manual Fix Comment", "")
+                st.info(f"This order was manually fixed by: {fix_by_info}\n\nComments: {fix_comment_info}")
 else:
-    st.info("No orders found for the selected date range, branch, and order status filter.")
+    st.info("No orders found for the selected filters.")
